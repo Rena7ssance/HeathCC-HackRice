@@ -110,10 +110,10 @@ def login():
 
         if email is None or password is None:
             return render_template("error.html", info="Incomplete Input")
-        print request.form.get('check-doctor')
         table, email_name = ('patient', 'useremail') if request.form.get('check-doctor') is None else (
             'doctor', 'doctoremail')
 
+        print email, password
         query_result = query_db(get_db(), 'SELECT * FROM {} WHERE {} = ? and password = ?'.format(table, email_name),
                                 (email, password), one=True)
         print query_result
@@ -134,16 +134,32 @@ def calendar():
         if session['type'] == 'patient':
             args = (session['id'],)
             values = query_db(get_db(),
-                              'select description from event where pid = ? and did is not \'NULL\' and julianday(startdate)-julianday(\'now\') < 10 order by startdate limit 3',
+                              'select advise from suggestion where pid = ? and julianday(worstdate)-julianday(\'now\') < 5 order by bestdate limit 3',
                               args)
-            description = []
-            for value in values:
-                print value
-                print description.append(str(value[0]))
+            descriptions = ""
+            for i in range(0, len(values)):
+                descriptions += ("* " + (str(values[i][0])) + " ")
+            print descriptions
             return render_template('calendar_user.html', firstname=session['firstname'], lastname=session['lastname'],
-                                   description=description)
+                                   descriptions=descriptions)
         else:
-            return render_template('calendar_doctor.html', firstname=session['firstname'], lastname=session['lastname'])
+            values = query_db(get_db(),
+                              'select * from event')
+            number_of_patient = len(values)
+            patients = []
+            for value in values:
+                each_dict = {
+                    'pid': int(value[0]),
+                    'startdate': str(value[1])[5:],
+                    'enddate': str(value[2])[5:],
+                    'category': str(value[3]),
+                    'description': str(value[5])
+                }
+                print each_dict
+                patients.append(each_dict)
+            return render_template('calendar_doctor.html', firstname=session['firstname'], lastname=session['lastname'],
+                                   number_of_patient=number_of_patient,
+                                   patients=patients)
     else:
         return render_template('error.html', firstname=None, lastname=None)
 
@@ -156,39 +172,50 @@ def insert_event():
         start_date = request.form.get('start_date')
         end_date = request.form.get('end_date')
         time = request.form.get('time')
-        args = (session['id'], 'NULL', start_date, end_date, category_select, time, description)
-        crud_db(get_db(), 'INSERT INTO event VALUES (?,?,?,?,?,?,?)', args)
+        args = (session['id'], start_date, end_date, category_select, time, description)
+        crud_db(get_db(), 'INSERT INTO event VALUES (?,?,?,?,?,?)', args)
         return redirect(url_for('calendar'))
     else:
         return render_template("error.html")
 
 
+@app.route('/_insert_suggestion', methods=['POST'])
+def insert_suggestion():
+    if request.method == 'POST' and session['type'] == 'doctor':
+        print "yes"
+        advise = request.form.get('advise', None)
+        best_date = request.form.get('best_date', None)
+        worst_date = request.form.get('worst_date', None)
+        pid = request.form.get('pid', None)
+        args = (pid, session['id'], best_date, worst_date, advise)
+        crud_db(get_db(), 'INSERT INTO suggestion VALUES (?,?,?,?,?)', args)
+        return redirect(url_for('calendar'))
+
+    return render_template("error.html")
+
+
 @app.route('/_get_events')
 def get_events():
-    args = (session['id'],)
-    events_query = query_db(get_db(), 'SELECT * FROM event WHERE pid = ?', args, one=False)
-    events_return = []
-    for event in events_query:
-
-        source = 'user'
-        if str(event[1]) != 'NULL':
-            source = 'doctor'
-
-        sy, sm, sd = str(event[2]).split("-")
-        ey, em, ed = str(event[3]).split("-")
-        each_dict = {
-            'title': str(event[6]),
-            'starty': sy,
-            'startm': sm,
-            'startd': sd,
-            'endy': ey,
-            'endm': em,
-            'endd': ed,
-            'time': int(event[5]),
-            'url': str(event[4]),
-            'source': source
-        }
-        events_return.append(each_dict)
+    if 'type' in session:
+        events_return = []
+        if session['type'] == 'patient':
+            args = (session['id'],)
+            events_query = query_db(get_db(), 'SELECT * FROM event WHERE pid = ?', args, one=False)
+            for event in events_query:
+                sy, sm, sd = str(event[1]).split("-")
+                ey, em, ed = str(event[2]).split("-")
+                each_dict = {
+                    'title': str(event[5]),
+                    'starty': sy,
+                    'startm': sm,
+                    'startd': sd,
+                    'endy': ey,
+                    'endm': em,
+                    'endd': ed,
+                    'time': int(event[4]),
+                    'url': str(event[3]),
+                }
+                events_return.append(each_dict)
     return jsonify(events_return)
 
 

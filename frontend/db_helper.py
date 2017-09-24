@@ -10,7 +10,6 @@ def crud_db(db, query_sql, query_args):
 
 
 def query_db(db, query, args=(), one=False):
-    print query
     cur = db.cursor().execute(query, args)
     rv = cur.fetchall()
     cur.close()
